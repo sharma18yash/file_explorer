@@ -23,13 +23,29 @@
 #include <sys/sendfile.h> 
 #include <fcntl.h>         
 #include <ctime>
-
+#include <pwd.h>
 using namespace std;
 bool refresh = true;
 vector<string> files;
 stack<string> left_stack;
 stack<string> right_stack;
 char home[100];
+string ROOT;
+void setRoot()
+{
+  register struct passwd *pw;
+  register uid_t uid;
+  int c;
+  string userName;
+  uid = geteuid ();
+  pw = getpwuid (uid);
+  if (pw)
+    {
+      userName  = pw->pw_name;
+    }
+
+  ROOT = "/home/" + userName;
+}
 int main();
 enum editorKey {
   ARROW_LEFT = 1000,
@@ -213,7 +229,7 @@ void enableRawMode() {
   if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
   atexit(disableRawMode);
   struct termios raw = E.orig_termios;
-  raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  // raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
   raw.c_oflag &= ~(OPOST);
   raw.c_cflag |= (CS8);
   raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
@@ -228,10 +244,12 @@ int editorReadKey() {
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
-  if(c=='z')
+  if(c==10)
   {
       return 10;
   }
+  if(c==127)
+    return 127;
   else if(c>='a' && c<='z')
     return c;
   if(c=='e')
@@ -411,6 +429,10 @@ void commandMode(struct abuf *ab)
     x = editorReadKey();
     if(x==10)
       break;
+    if(x==27)
+      return;
+    if(x=='q')
+      exit(0);
     char c = (char)x; 
     write(STDOUT_FILENO, &c,1);
     command += to_string(c);
@@ -593,7 +615,7 @@ void editorMoveCursor(int key) {
       refresh=false;
       break;
     }
-    case 'e':
+    case 10:
     {
       addPermZero=1;
       refresh=false;
@@ -640,7 +662,7 @@ void editorMoveCursor(int key) {
       abFree(&ab);
       break;
     }
-    case 'b':
+    case 127:
     {
       addPermZero=1;
       refresh=false;
@@ -693,8 +715,26 @@ void editorMoveCursor(int key) {
     abAppend(&ab, "\x1b[H", 3);
       // editorDrawRows(s, &ab);
     commandMode(&ab);
-    //write code to display directory here
-      main();
+    addPermZero=1;
+      refresh=false;
+      files.clear();
+      ls_l.clear();
+      char cwd[100];
+      getcwd(cwd, 100);
+      left_stack.push(cwd);
+      right_stack.push(cwd);
+      char buffer[100];
+      strcpy(buffer, cwd);
+      abAppend(&ab, "\x1b[?25l", 6);
+      abAppend(&ab, "\x1b[H", 3);
+      // editorDrawRows(s, &ab);
+      openDirectory(buffer, &ab);
+      char buf[32];
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+      abAppend(&ab, buf, strlen(buf));
+      abAppend(&ab, "\x1b[?25h", 6);
+      write(STDOUT_FILENO, ab.b, ab.len);
+      abFree(&ab);
       break;
   }
 }
@@ -719,11 +759,11 @@ void editorProcessKeypress() {
     case ARROW_RIGHT:
         editorMoveCursor(c);
         break;
-    case 'e':
+    case 10:
       refresh=false;
       editorMoveCursor(c);
       break;
-    case 'b':
+    case 127:
       refresh = false;
       editorMoveCursor(c);
       break;
