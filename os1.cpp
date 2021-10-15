@@ -321,9 +321,81 @@ bool copyFile(const char *SRC, const char* DEST)
     dest << src.rdbuf();
     return src && dest;
 }
+int remove_directory(const char *path) {
+   DIR *d = opendir(path);
+   size_t path_len = strlen(path);
+   int r = -1;
+   if (d) {
+      struct dirent *p;
+      r = 0;
+      while (!r && (p=readdir(d))) {
+          int r2 = -1;
+          char *buf;
+          size_t len;
+          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
+             continue;
+          len = path_len + strlen(p->d_name) + 2; 
+          buf = (char *)malloc(len);
+          if (buf) {
+             struct stat statbuf;
+
+             snprintf(buf, len, "%s/%s", path, p->d_name);
+             if (!stat(buf, &statbuf)) {
+                if (S_ISDIR(statbuf.st_mode))
+                   r2 = remove_directory(buf);
+                else
+                   r2 = unlink(buf);
+             }
+             free(buf);
+          }
+          r = r2;
+      }
+      closedir(d);
+   }
+
+   if (!r)
+      r = rmdir(path);
+
+   return r;
+}
+
+bool find_dir(string str, string dir){
+	if(chdir(dir.c_str()) == -1){
+		// perror("chdir");
+		return 0;
+	}
+	char s[100];
+	getcwd(s,100);
+	struct stat myst;
+	mode_t m_temp;
+	DIR * temp = opendir(".");
+	struct dirent * p = readdir(temp);
+
+	while(p != NULL){
+		// cout<<"curr dir = "<<s<<endl;
+		if(p->d_name[0] != '.'){
+			stat(p->d_name,&myst);
+			m_temp = myst.st_mode;
+			// cout<<"Checking ... "<<s<<"/"<<p->d_name<<endl;
+			if(p->d_name == str){
+				return 1;
+			}
+			if(m_temp & S_IFDIR){
+				string abc = s;
+				abc += "/";
+				abc += p->d_name;
+				if(find_dir(str,abc))
+					return 1;
+			}
+		}
+		p = readdir(temp);
+	}
+	return 0;
+}
+ 
 void commandMode(struct abuf *ab)
 {
-  for(int i=0; i<10; i++)
+  for(int i=0; i<20; i++)
   {  
     abAppend(ab, "\n",1);
     editorMoveCursor(ARROW_DOWN);
@@ -366,8 +438,6 @@ void commandMode(struct abuf *ab)
       string dirname = commandVec[2] +"/" + commandVec[1];
       if (mkdir(dirname.c_str(), 0777) == -1)
           cerr << "Error :  " << strerror(errno) << endl;
-      else
-        cout << "Directory created";
     }
     if(commandVec[0]=="copy")
     {
@@ -400,7 +470,7 @@ void commandMode(struct abuf *ab)
       stat(source_dir.c_str(), &st);
       chmod(dest_dir.c_str(), st.st_mode);
       unlink(commandVec[1].c_str());
-      //call function to delete directory here
+      remove_directory(commandVec[1].c_str());
     }
     if(commandVec[0]=="rename")
     {
@@ -426,6 +496,24 @@ void commandMode(struct abuf *ab)
       abAppend(&ab, "\x1b[?25h", 6);
       write(STDOUT_FILENO, ab.b, ab.len);
       abFree(&ab);
+    }
+    if(commandVec[0]== "delete_file")
+    {
+      unlink(commandVec[1].c_str());
+    }
+    if(commandVec[0]=="delete_dir")
+    {
+      remove_directory(commandVec[1].c_str());
+    }
+    if(commandVec[0]=="search")
+    {
+      char cwd[100];
+      getcwd(cwd,100);
+      // cout<<cwd;
+      if(find_dir(commandVec[1].c_str(), cwd))
+        write(STDOUT_FILENO,"True", 4);
+      else
+        write(STDOUT_FILENO,"False", 2);
     }
   return;
 }
@@ -605,7 +693,7 @@ void editorMoveCursor(int key) {
     abAppend(&ab, "\x1b[H", 3);
       // editorDrawRows(s, &ab);
     commandMode(&ab);
-    //write code to display here directory here
+    //write code to display directory here
       main();
       break;
   }
