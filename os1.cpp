@@ -13,23 +13,24 @@
 #include<bits/stdc++.h>
 #include<dirent.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <cstring>
 #include<iostream>
-#include<unistd.h>
-#include<bits/stdc++.h>
 #include<vector>
 #include <sys/wait.h>
+#include <sys/sendfile.h> 
+#include <fcntl.h>         
+#include <ctime>
+
 using namespace std;
 bool refresh = true;
 vector<string> files;
 stack<string> left_stack;
 stack<string> right_stack;
 char home[100];
+int main();
 enum editorKey {
   ARROW_LEFT = 1000,
   ARROW_RIGHT,
@@ -160,7 +161,6 @@ void openDirectory(char *s, struct abuf *ab)
 
 
 void editorRefreshScreen() {
-  editorScroll();
   struct abuf ab = ABUF_INIT;
   abAppend(&ab, "\x1b[?25l", 6);
   abAppend(&ab, "\x1b[H", 3);
@@ -228,6 +228,12 @@ int editorReadKey() {
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
+  if(c=='z')
+  {
+      return 10;
+  }
+  else if(c>='a' && c<='z')
+    return c;
   if(c=='e')
   {
     return c;
@@ -237,6 +243,10 @@ int editorReadKey() {
     return c;
   }
   else if(c=='h')
+  {
+    return c;
+  }
+  else if(c==':')
   {
     return c;
   }
@@ -277,6 +287,148 @@ int getWindowSize(int *rows, int *cols) {
 
 
 //**************INPUT*****************/
+void editorMoveCursor(int key);
+string asciiToSentence(string str, int len)
+{
+  string ans;
+    int num = 0;
+    for (int i = 0; i < len; i++) {
+ 
+        // Append the current digit
+        num = num * 10 + (str[i] - '0');
+ 
+        // If num is within the required range
+        if (num >= 32 && num <= 122) {
+ 
+            // Convert num to char
+            char ch = (char)num;
+            ans+=ch;
+            num = 0;
+        }
+    }
+    return ans;
+}
+void createFile(vector<string> file_name)
+{
+  fstream file;
+  file.open(file_name[1], ios::out);
+  write(STDOUT_FILENO, "success", 7);
+}
+bool copyFile(const char *SRC, const char* DEST)
+{
+    std::ifstream src(SRC, std::ios::binary);
+    std::ofstream dest(DEST, std::ios::binary);
+    dest << src.rdbuf();
+    return src && dest;
+}
+void commandMode(struct abuf *ab)
+{
+  for(int i=0; i<10; i++)
+  {  
+    abAppend(ab, "\n",1);
+    editorMoveCursor(ARROW_DOWN);
+  }
+  abAppend(ab, "COMMAND MODE\n", 13);
+  editorMoveCursor(ARROW_DOWN);
+  write(STDOUT_FILENO, ab->b, ab->len);
+  string command;
+  int x;
+  char *c;
+  while(1)
+  {
+    x = editorReadKey();
+    if(x==10)
+      break;
+    char c = (char)x; 
+    write(STDOUT_FILENO, &c,1);
+    command += to_string(c);
+  }
+    string cmd = asciiToSentence(command, command.size());
+    write(STDOUT_FILENO,"\n", 1);
+    write(STDOUT_FILENO,"\n", 1);
+    vector<string> commandVec;
+    istringstream ss(cmd);
+    string word;
+    while(ss >> word)
+      commandVec.push_back(word);
+    cout<<commandVec.size()<<endl;
+    if(commandVec[0]=="create_file")
+    {
+       string path = commandVec[2]+ "/" + commandVec[1];
+      //  const char *path="/home/yash/file.txt";
+      std::ofstream file(path); //open in constructor
+      std::string data("");
+      file << data;
+    }
+    if(commandVec[0]=="create_dir")
+    {
+      int check;
+      string dirname = commandVec[2] +"/" + commandVec[1];
+      if (mkdir(dirname.c_str(), 0777) == -1)
+          cerr << "Error :  " << strerror(errno) << endl;
+      else
+        cout << "Directory created";
+    }
+    if(commandVec[0]=="copy")
+    {
+    string source_dir = commandVec[1];
+    string dest_dir = commandVec[2];
+    ifstream source(source_dir,ios::binary);
+		ofstream dest(dest_dir,ios::binary);
+    dest << source.rdbuf();
+    source.close();
+    dest.close();
+    struct stat st;
+    stat(source_dir.c_str(), &st);
+    chmod(dest_dir.c_str(), st.st_mode);
+    }
+    if(commandVec[0]=="move")
+    {
+      char cwd[100];
+      getcwd(cwd, 100);
+      string cwds(cwd);
+      string source_dir = cwds + "/" + commandVec[1] ;
+      // cout<<source_dir<<endl;
+      string dest_dir = commandVec[2];
+      ifstream source(source_dir,ios::binary);
+		  ofstream dest(dest_dir,ios::binary);
+      // cout<<dest_dir<<endl;
+			dest << source.rdbuf();
+      source.close();
+			dest.close();
+      struct stat st;
+      stat(source_dir.c_str(), &st);
+      chmod(dest_dir.c_str(), st.st_mode);
+      unlink(commandVec[1].c_str());
+      //call function to delete directory here
+    }
+    if(commandVec[0]=="rename")
+    {
+      rename(commandVec[1].c_str(), commandVec[2].c_str());
+    }
+    if(commandVec[0]=="goto")
+    {
+      addPermZero=1;
+      refresh=false;
+      files.clear();
+      ls_l.clear();
+      char buffer[100];
+      string prev = "..";
+      strcpy(buffer, commandVec[1].c_str());
+      struct abuf ab = ABUF_INIT;
+      abAppend(&ab, "\x1b[?25l", 6);
+      abAppend(&ab, "\x1b[H", 3);
+      // editorDrawRows(s, &ab);
+      openDirectory(buffer, &ab);
+      char buf[32];
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+      abAppend(&ab, buf, strlen(buf));
+      abAppend(&ab, "\x1b[?25h", 6);
+      write(STDOUT_FILENO, ab.b, ab.len);
+      abFree(&ab);
+    }
+  return;
+}
 
 void editorMoveCursor(int key) {
   switch (key) {
@@ -447,6 +599,15 @@ void editorMoveCursor(int key) {
       abFree(&ab);
       break;
     }
+    case ':':
+    struct abuf ab = ABUF_INIT;
+    abAppend(&ab, "\x1b[?25l", 6);
+    abAppend(&ab, "\x1b[H", 3);
+      // editorDrawRows(s, &ab);
+    commandMode(&ab);
+    //write code to display here directory here
+      main();
+      break;
   }
 }
 void editorProcessKeypress() {
@@ -479,6 +640,10 @@ void editorProcessKeypress() {
       editorMoveCursor(c);
       break;
     case 'h':
+      refresh = false;
+      editorMoveCursor(c);
+      break;
+    case ':':
       refresh = false;
       editorMoveCursor(c);
       break;
