@@ -129,8 +129,22 @@ string getFileCreationTime(char *path)
       ls = ls+perm[0];
     addPermZero=0;
     ls= ls + perm + "\t";
+    // int length = sizeof(path)/sizeof(char);
     // string y = to_string(*path);
-    ls = ls + path + "\t";
+    int length = 0;
+    char *path2 = path;
+    while (*path2++ != '\0') {
+           length++;
+    }
+
+    if(length>7)
+    {
+      char shortPath[5];
+      memcpy(shortPath, &path[0], 4);
+      ls = ls+shortPath+"..\t\t";
+    }
+    else
+      ls = ls + path + "\t\t";
     if(attr.st_uid=1000)
         ls+="yash\t";
     if(attr.st_gid=1000)
@@ -316,7 +330,7 @@ string asciiToSentence(string str, int len)
         num = num * 10 + (str[i] - '0');
  
         // If num is within the required range
-        if (num >= 32 && num <= 122) {
+        if (num >= 32 && num <= 127) {
  
             // Convert num to char
             char ch = (char)num;
@@ -437,6 +451,9 @@ void commandMode(struct abuf *ab)
     write(STDOUT_FILENO, &c,1);
     command += to_string(c);
   }
+    setRoot();
+    abAppend(ab, command.c_str(), command.size());
+    write(STDOUT_FILENO, ab->b, ab->len);
     string cmd = asciiToSentence(command, command.size());
     write(STDOUT_FILENO,"\n", 1);
     write(STDOUT_FILENO,"\n", 1);
@@ -448,12 +465,20 @@ void commandMode(struct abuf *ab)
     cout<<commandVec.size()<<endl;
     if(commandVec[0]=="create_file")
     {
-       string path = commandVec[2]+ "/" + commandVec[1];
-      //  const char *path="/home/yash/file.txt";
+      string path;
+      if(commandVec[2][0]=='~' && commandVec[2][1]=='/')
+      {
+        commandVec[2].erase(0,2);
+        path = ROOT+commandVec[2]; 
+        write(STDOUT_FILENO, path.c_str(), path.size());
+      }
+      else
+        path = commandVec[2]+ "/" + commandVec[1];
       std::ofstream file(path); //open in constructor
       std::string data("");
       file << data;
     }
+
     if(commandVec[0]=="create_dir")
     {
       int check;
