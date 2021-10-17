@@ -44,7 +44,7 @@ void setRoot()
       userName  = pw->pw_name;
     }
 
-  ROOT = "/home/" + userName;
+  ROOT = "/home/" + userName + '/';
 }
 int main();
 enum editorKey {
@@ -330,7 +330,7 @@ string asciiToSentence(string str, int len)
         num = num * 10 + (str[i] - '0');
  
         // If num is within the required range
-        if (num >= 32 && num <= 127) {
+        if (num >= 32 && num <= 126) {
  
             // Convert num to char
             char ch = (char)num;
@@ -469,8 +469,7 @@ void commandMode(struct abuf *ab)
       if(commandVec[2][0]=='~' && commandVec[2][1]=='/')
       {
         commandVec[2].erase(0,2);
-        path = ROOT+commandVec[2]; 
-        write(STDOUT_FILENO, path.c_str(), path.size());
+        path = ROOT+commandVec[2] + '/' + commandVec[1]; 
       }
       else
         path = commandVec[2]+ "/" + commandVec[1];
@@ -482,7 +481,14 @@ void commandMode(struct abuf *ab)
     if(commandVec[0]=="create_dir")
     {
       int check;
-      string dirname = commandVec[2] +"/" + commandVec[1];
+      string dirname;
+      if(commandVec[2][0]=='~' && commandVec[2][1]=='/')
+      {
+        commandVec[2].erase(0,2);
+        dirname = ROOT+commandVec[2] + '/' + commandVec[1]; 
+      }
+      else
+          dirname = commandVec[2] +"/" + commandVec[1];
       if (mkdir(dirname.c_str(), 0777) == -1)
           cerr << "Error :  " << strerror(errno) << endl;
     }
